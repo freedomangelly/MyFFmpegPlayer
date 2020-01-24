@@ -14,9 +14,15 @@ import com.liuy.myffmpegplayer.ffmpegplayer.listener.MediaPreparedListener;
 import java.io.File;
 
 public class MainActivity extends AppCompatActivity {
-    File mMusicFile = new File(Environment.getExternalStorageDirectory(), "input.mp3");
+    File mMusicFile = new File(Environment.getExternalStorageDirectory(), "ental.mp3");
     // Used to load the 'native-lib' library on application startup.
     private MediaPlayerJNI mPlayer;
+
+    long tetet=0;
+
+    public static void getLong(long te){
+
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -26,24 +32,32 @@ public class MainActivity extends AppCompatActivity {
         Log.e("TAG", "file is exist: " + mMusicFile.exists());
 
         mPlayer = new MediaPlayerJNI();
-        mPlayer.setDataSource(mMusicFile.getAbsolutePath());
-
-        mPlayer.setOnErrorListener(new MediaErrorListener() {
+//        mPlayer.setDataSource(mMusicFile.getAbsolutePath());
+//
+//        mPlayer.setOnErrorListener(new MediaErrorListener() {
+//            @Override
+//            public void onError(int code, String msg) {
+//                Log.e("TAG", "error code: " + code);
+//                Log.e("TAG", "error msg: " + msg);
+//                // Java 的逻辑代码
+//            }
+//        });
+//
+//        mPlayer.setOnPreparedListener(new MediaPreparedListener() {
+//            @Override
+//            public void onPrepared() {
+//                Log.e("TAG", "准备完毕");
+//                mPlayer.play();
+//            }
+//        });
+//        mPlayer.prepareAsync();
+        new Thread(){
             @Override
-            public void onError(int code, String msg) {
-                Log.e("TAG", "error code: " + code);
-                Log.e("TAG", "error msg: " + msg);
-                // Java 的逻辑代码
+            public void run() {
+                super.run();
+                mPlayer.play2(mMusicFile.getAbsolutePath());
             }
-        });
+        }.start();
 
-        mPlayer.setOnPreparedListener(new MediaPreparedListener() {
-            @Override
-            public void onPrepared() {
-                Log.e("TAG", "准备完毕");
-                mPlayer.play();
-            }
-        });
-        mPlayer.prepareAsync();
     }
 }

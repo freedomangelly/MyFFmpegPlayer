@@ -17,6 +17,14 @@ JNIEXPORT void JNICALL Java_com_liuy_myffmpegplayer_ffmpegplayer_MediaPlayerJNI_
 
 /*
  * Class:     com_liuy_myffmpegplayer_ffmpegplayer_MediaPlayerJNI
+ * Method:    nPlay2
+ * Signature: (Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_com_liuy_myffmpegplayer_ffmpegplayer_MediaPlayerJNI_nPlay2
+  (JNIEnv *, jobject, jstring);
+
+/*
+ * Class:     com_liuy_myffmpegplayer_ffmpegplayer_MediaPlayerJNI
  * Method:    nPrepareAsync
  * Signature: (Ljava/lang/String;)V
  */

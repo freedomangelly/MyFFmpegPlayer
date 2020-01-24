@@ -5,6 +5,10 @@ import android.text.TextUtils;
 import com.liuy.myffmpegplayer.ffmpegplayer.listener.MediaErrorListener;
 import com.liuy.myffmpegplayer.ffmpegplayer.listener.MediaPreparedListener;
 
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 /**
  * description:
  * author: freed on 2020/1/18
@@ -57,7 +61,12 @@ public class MediaPlayerJNI {
         nPlay();
     }
 
+    public void play2(String url){
+        nPlay2(url);
+    }
+
     private native void nPlay();
+    private native void nPlay2(String url);
 
     public void prepare() {
         if (TextUtils.isEmpty(url)) {
