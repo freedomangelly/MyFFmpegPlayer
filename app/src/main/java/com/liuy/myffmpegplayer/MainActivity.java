@@ -34,14 +34,14 @@ public class MainActivity extends AppCompatActivity {
         mPlayer = new MediaPlayerJNI();
 //        mPlayer.setDataSource(mMusicFile.getAbsolutePath());
 //
-//        mPlayer.setOnErrorListener(new MediaErrorListener() {
-//            @Override
-//            public void onError(int code, String msg) {
-//                Log.e("TAG", "error code: " + code);
-//                Log.e("TAG", "error msg: " + msg);
-//                // Java 的逻辑代码
-//            }
-//        });
+        mPlayer.setOnErrorListener(new MediaErrorListener() {
+            @Override
+            public void onError(int code, String msg) {
+                Log.e("TAG", "error code: " + code);
+                Log.e("TAG", "error msg: " + msg);
+                // Java 的逻辑代码
+            }
+        });
 //
 //        mPlayer.setOnPreparedListener(new MediaPreparedListener() {
 //            @Override
