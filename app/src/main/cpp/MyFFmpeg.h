@@ -29,7 +29,8 @@ public:
     void play();
     void prepare();
     void prepareAsync();
-    void callPlayerJniError(int code,char* msg);
+    void prepare(ThreadMode threadMode);
+    void callPlayerJniError(ThreadMode threadMode,int code,char* msg);
     void release();
 };
 

@@ -7,8 +7,10 @@
 
 MyFFmpeg::MyFFmpeg(FFMpegJniCall *jniCall, const char *url) {
     this->jniCall=jniCall;
-    this->url=url;
+//    this->url=url;
+    this->url= static_cast<const char *>(malloc(strlen(url) + 1));
     LOGI("enter MyFFmpeg Play2 %s",url);
+    memcpy((void *) this->url, url, strlen(url) + 1);
 }
 
 MyFFmpeg::~MyFFmpeg() {
@@ -17,7 +19,7 @@ MyFFmpeg::~MyFFmpeg() {
 
 void *threadPlay(void *context){
     MyFFmpeg *pFFmpeg= (MyFFmpeg *)(context);
-    pFFmpeg->prepare();
+    pFFmpeg->prepare(THREAD_CHILD);
     return 0;
 }
 
@@ -30,7 +32,9 @@ void MyFFmpeg::play() {
 //    pFFmpeg->prepare();
 }
 
-void MyFFmpeg::prepare() {
+void MyFFmpeg::prepare(ThreadMode threadMode) {
+
+
     av_register_all();
     avformat_network_init();
 
@@ -53,7 +57,7 @@ void MyFFmpeg::prepare() {
         // 第二件事，需要释放资源
         LOGE("format open input error: %s == %d", av_err2str(formatOpenInputRes),formatOpenInputRes);
         LOGE("format open input error: url= %s", url);
-        callPlayerJniError(formatOpenInputRes, av_err2str(formatOpenInputRes));
+        callPlayerJniError(threadMode,formatOpenInputRes, av_err2str(formatOpenInputRes));
         return;
     }
     LOGI("1111111111111111111111112");
@@ -61,7 +65,7 @@ void MyFFmpeg::prepare() {
     if (formatFindStreamInfoRes < 0) {
         LOGE("format find stream info error: %s", av_err2str(formatFindStreamInfoRes));
         // 这种方式一般不推荐这么写，但是的确方便
-        callPlayerJniError(formatFindStreamInfoRes, av_err2str(formatFindStreamInfoRes));
+        callPlayerJniError(threadMode,formatFindStreamInfoRes, av_err2str(formatFindStreamInfoRes));
         return;
     }
     LOGI("1111111111111111111111113");
@@ -71,7 +75,7 @@ void MyFFmpeg::prepare() {
     if (audioStramIndex < 0) {
         LOGE("format audio stream error: %s");
         // 这种方式一般不推荐这么写，但是的确方便
-        callPlayerJniError(FIND_STREAM_ERROR_CODE, "format audio stream error");
+        callPlayerJniError(threadMode,FIND_STREAM_ERROR_CODE, "format audio stream error");
         return;
     }
     LOGI("1111111111111111111111114");
@@ -81,7 +85,7 @@ void MyFFmpeg::prepare() {
     if (pCodec == NULL) {
         LOGE("codec find audio decoder error");
         // 这种方式一般不推荐这么写，但是的确方便
-        callPlayerJniError(CODEC_FIND_DECODER_ERROR_CODE, "codec find audio decoder error");
+        callPlayerJniError(threadMode,CODEC_FIND_DECODER_ERROR_CODE, "codec find audio decoder error");
         return;
     }
     LOGI("1111111111111111111111115");
@@ -90,21 +94,21 @@ void MyFFmpeg::prepare() {
     if (pCodecContext == NULL) {
         LOGE("codec alloc context error");
         // 这种方式一般不推荐这么写，但是的确方便
-        callPlayerJniError(CODEC_ALLOC_CONTEXT_ERROR_CODE, "codec alloc context error");
+        callPlayerJniError(threadMode,CODEC_ALLOC_CONTEXT_ERROR_CODE, "codec alloc context error");
         return;
     }
     LOGI("1111111111111111111111116");
     codecParametersToContextRes = avcodec_parameters_to_context(pCodecContext, pCodecParameters);
     if (codecParametersToContextRes < 0) {
         LOGE("codec parameters to context error: %s", av_err2str(codecParametersToContextRes));
-        callPlayerJniError(codecParametersToContextRes, av_err2str(codecParametersToContextRes));
+        callPlayerJniError(threadMode,codecParametersToContextRes, av_err2str(codecParametersToContextRes));
         return;
     }
     LOGI("1111111111111111111111117");
     codecOpenRes = avcodec_open2(pCodecContext, pCodec, NULL);
     if (codecOpenRes != 0) {
         LOGI("codec audio open error: %s", av_err2str(codecOpenRes));
-        callPlayerJniError(codecOpenRes, av_err2str(codecOpenRes));
+        callPlayerJniError(threadMode,codecOpenRes, av_err2str(codecOpenRes));
         return;
     }
     LOGI("1111111111111111111111118");
@@ -119,13 +123,13 @@ void MyFFmpeg::prepare() {
                                     out_sample_rate, in_ch_layout, in_sample_fmt, in_sample_rate, 0, NULL);
     if (swrContext == NULL) {
         // 提示错误
-        callPlayerJniError(SWR_ALLOC_SET_OPTS_ERROR_CODE, "swr alloc set opts error");
+        callPlayerJniError(threadMode,SWR_ALLOC_SET_OPTS_ERROR_CODE, "swr alloc set opts error");
         return;
     }
     LOGI("1111111111111111111111119");
     int swrInitRes = swr_init(swrContext);
     if (swrInitRes < 0) {
-        callPlayerJniError(SWR_CONTEXT_INIT_ERROR_CODE, "swr context swr init error");
+        callPlayerJniError(threadMode,SWR_CONTEXT_INIT_ERROR_CODE, "swr context swr init error");
         return;
     }
     LOGI("1111111111111111111111120");
@@ -137,8 +141,33 @@ void MyFFmpeg::prepare() {
     LOGI("11111111111111111111111202");
     uint8_t *resampleOutBuffer = (uint8_t *) malloc(dataSize);
     // ---------- 重采样 end ----------
-    LOGI("11111111111111111111111203");
-    jbyteArray jPcmByteArray = jniCall->jniEnv->NewByteArray(dataSize);
+    LOGI("11111111111111111111111203");//jniEnv主线程 现在是子线程
+
+    JNIEnv* env;
+    int status;
+    bool isAttach = false;
+    JavaVM *javaVms=NULL;
+            LOGI("111111111111111111111112031");
+    if(threadMode==THREAD_CHILD){
+        LOGI("1111111111111111111111120312");
+        javaVms=jniCall->javaVM;
+        LOGI("1111111111111111111111120313");
+        status = javaVms->AttachCurrentThread(&env, 0);
+        LOGI("111111111111111111111112032 %d",status);
+        if (status < 0) {
+                LOGE("MediaRenderer::DoJavaCallback Failed: %d", status);
+                return ;
+            }
+            isAttach = true;
+        javaVms->DetachCurrentThread();
+    }
+    LOGI("11111111111111111111111204 %d",isAttach);
+    jbyteArray jPcmByteArray = NULL;
+    if(isAttach){
+        jPcmByteArray = jniCall->jniEnv->NewByteArray(dataSize);
+    } else{
+        jPcmByteArray = env->NewByteArray(dataSize);
+    }
     // native 创建 c 数组
     LOGI("11111111111111111111111204");
     jbyte *jPcmData = jniCall->jniEnv->GetByteArrayElements(jPcmByteArray, NULL);
@@ -198,9 +227,9 @@ void MyFFmpeg::prepareAsync() {
 
 }
 
-void MyFFmpeg::callPlayerJniError(int code, char *msg) {
+void MyFFmpeg::callPlayerJniError(ThreadMode threadMode,int code, char *msg) {
     release();
-    jniCall->callPlayerError(code, msg);
+    jniCall->callPlayerError(threadMode,code, msg);
 }
 
 void MyFFmpeg::release() {
@@ -226,6 +255,10 @@ void MyFFmpeg::release() {
         resampleOutBuffer=NULL;
     }
     avformat_network_deinit();
+    if(url!=NULL){
+        free((void *) url);
+        url=NULL;
+    }
 
 }
 

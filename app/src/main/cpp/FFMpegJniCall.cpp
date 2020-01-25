@@ -17,6 +17,7 @@ FFMpegJniCall::FFMpegJniCall(JavaVM *javaVm, JNIEnv *jniEnv , jobject jPlayerObj
 
 FFMpegJniCall::~FFMpegJniCall(){
     jniEnv->DeleteLocalRef(jAudioTrackOjb);
+    jniEnv->DeleteGlobalRef(jPlayerObj);
 }
 
 void FFMpegJniCall::initCreateAudioTrack() {
@@ -60,8 +61,21 @@ FFMpegJniCall::callAudioTrackWrite(jbyteArray audioData, int offsetInBytes, int 
     jniEnv->CallIntMethod(jAudioTrackOjb,jAudioTrackWriteMid,audioData,offsetInBytes,sizeInBytes);
 }
 
-void FFMpegJniCall::callPlayerError(int code, char *msg) {
-    jstring jmsg=jniEnv->NewStringUTF(msg);
-    jniEnv->CallVoidMethod(jPlayerObj,iPlayerErrorMid,code,jmsg);
-    jniEnv->DeleteLocalRef(jmsg);
+void FFMpegJniCall::callPlayerError(ThreadMode  threadMode,int code, char *msg) {
+    if(threadMode==THREAD_MAIN){
+        jstring jmsg=jniEnv->NewStringUTF(msg);
+        jniEnv->CallVoidMethod(jPlayerObj,iPlayerErrorMid,code,jmsg);
+        jniEnv->DeleteLocalRef(jmsg);
+    } else{
+        JNIEnv *env;
+        if(javaVM->AttachCurrentThread(&env,0)!=JNI_OK){
+            LOGE("get child thread jniEnv error!");
+            return;
+        }
+        jstring jmsg=env->NewStringUTF(msg);
+        env->CallVoidMethod(jPlayerObj,iPlayerErrorMid,code,jmsg);
+        env->DeleteLocalRef(jmsg);
+        javaVM->DetachCurrentThread();
+    }
+
 }
