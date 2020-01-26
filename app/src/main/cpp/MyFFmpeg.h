@@ -16,8 +16,8 @@ extern "C"{
 class MyFFmpeg {
 public:
     AVFormatContext *pFormatContext = NULL;
-    AVCodecContext *pCodecContext=NULL;
-    SwrContext *swrContext = NULL;
+//    AVCodecContext *pCodecContext=NULL;
+//    SwrContext *swrContext = NULL;
 
     uint8_t *resampleOutBuffer=NULL;
     char* url=NULL;

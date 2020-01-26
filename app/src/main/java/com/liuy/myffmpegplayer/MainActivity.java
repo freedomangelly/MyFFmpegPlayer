@@ -51,8 +51,8 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        mPlayer.prepare();
-        mPlayer.play();
+//        mPlayer.prepare();
+//        mPlayer.play();
         mPlayer.prepareAsync();
 
     }

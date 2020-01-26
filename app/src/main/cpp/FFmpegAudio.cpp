@@ -9,8 +9,11 @@ FFmpegAudio::FFmpegAudio(int audioStreamIndex, FFMpegJniCall *pJniCall, AVCodecC
             AVFormatContext *pFormatContext){
     this->audioStreamIndex=audioStreamIndex;
     this->pJniCall=pJniCall;
-    this->pCodecContext = pCodecContext;
+//    this->pCodecContext = pCodecContext;
     this->pFormatContext=pFormatContext;
+
+    pPacketQueue=new FFmpegPacketQueue();
+    pPlayerStatus=new FFmpegPlayerStatus();
 }
 
 void *threadPlay2(void *context){
@@ -19,7 +22,32 @@ void *threadPlay2(void *context){
     return 0;
 }
 
+void *threadReadPacket(void *context){
+    FFmpegAudio *pAudio= static_cast<FFmpegAudio *>(context);
+    while (pAudio->pPlayerStatus!=NULL && !pAudio->pPlayerStatus->isExit){
+        AVPacket *pPacket = av_packet_alloc();
+        if(av_read_frame(pAudio->pFormatContext,pPacket)>=0){
+            if(pPacket->stream_index==pAudio->audioStreamIndex){
+                pAudio->pPacketQueue->push(pPacket);
+            } else{
+                // 1. 解引用数据 data ， 2. 销毁 pPacket 结构体内存  3. pPacket = NULL
+                av_packet_free(&pPacket);
+            }
+        } else{
+            // 1. 解引用数据 data ， 2. 销毁 pPacket 结构体内存  3. pPacket = NULL
+            av_packet_free(&pPacket);
+            // 睡眠一下，尽量不去消耗 cpu 的资源，也可以退出销毁这个线程
+        }
+    }
+}
+
 void FFmpegAudio::play() {
+    //一个线程读取
+    pthread_t readPacketTheadT;
+    pthread_create(&readPacketTheadT,NULL,threadReadPacket,this);
+    pthread_detach(readPacketTheadT);
+
+    //一个线程播放
     pthread_t  playThreadT;
     pthread_create(&playThreadT,NULL,threadPlay2,this);
     pthread_detach(playThreadT);
@@ -76,7 +104,7 @@ void FFmpegAudio::initCreateOpenSLES() {
     // 3.4 设置缓存队列和回调函数
     SLAndroidSimpleBufferQueueItf playerBufferQueue;
     (*pPlayer)->GetInterface(pPlayer, SL_IID_BUFFERQUEUE, &playerBufferQueue);
-    (*playerBufferQueue)->RegisterCallback(playerBufferQueue, playerCallback, NULL);
+    (*playerBufferQueue)->RegisterCallback(playerBufferQueue, playerCallback, this);
     // 3.5 设置播放状态
     (*pPlayItf)->SetPlayState(pPlayItf, SL_PLAYSTATE_PLAYING);
     // 3.6 调用回调函数
@@ -92,10 +120,13 @@ void playerCallback(SLAndroidSimpleBufferQueueItf caller, void *pContext) {
 
 int FFmpegAudio::resampleAudio() {
     int dataSize=0;
-    AVPacket *pPacket=av_packet_alloc();
+//    AVPacket *pPacket=av_packet_alloc();
+    AVPacket *pPacket=NULL;
     AVFrame *pFrame=av_frame_alloc();
 
-    while (av_read_frame(pFormatContext,pPacket)>=0){
+//    while (av_read_frame(pFormatContext,pPacket)>=0){
+        while (pPlayerStatus!=NULL && !pPlayerStatus->isExit){
+            pPacket=pPacketQueue->pop();
         if(pPacket->stream_index==audioStreamIndex){
             //pPacket 包，压缩的数据，解码成pcm数据
             int codecSendPacketRes=avcodec_send_packet(pCodecContext,pPacket);
@@ -103,10 +134,17 @@ int FFmpegAudio::resampleAudio() {
                 int codecReceiveFrameRes=avcodec_receive_frame(pCodecContext,pFrame);
                 if(codecReceiveFrameRes==0){
                     LOGI("解码音频帧");
-                    //调用重采样的方法
+                    //调用重采样的方法 返回值是返回重采样的个数，也就是 pFrame->nb_samples
                     dataSize=swr_convert(swrContext, &resampleOutBuffer, pFrame->nb_samples,
                                          (const uint8_t **) (pFrame->data), pFrame->nb_samples);
-                    LOGI("解码音频帧");
+                    //dataSize帧数不够
+
+                    dataSize=dataSize *2 *2; //*每个点占2位*每个点两通道
+                    // write 写到缓冲区 pFrame.data -> javabyte
+                    // size 是多大，装 pcm 的数据
+                    // 1s 44100 点  2通道 ，2字节    44100*2*2
+                    // 1帧不是一秒，pFrame->nb_samples点
+                    LOGI("解码音频帧：%d,%d",dataSize,pFrame->nb_samples);
                     break;
                 }
             }
@@ -163,6 +201,99 @@ FFmpegAudio::callAudioTrackWrite(JNIEnv *env,jbyteArray audioData, int offsetInB
 }
 
 FFmpegAudio::~FFmpegAudio() {
+    release();
+}
+
+void FFmpegAudio::callPlayerJniError(ThreadMode threadMode,int code, char *msg) {
+    release();
+    pJniCall->callPlayerError(threadMode,code, msg);
+}
+
+
+void FFmpegAudio::analysisStream(ThreadMode threadMode, AVStream **streams) {
+    // 查找解码
+    AVCodecParameters *pCodecParameters = pFormatContext->streams[audioStreamIndex]->codecpar;
+    AVCodec *pCodec = avcodec_find_decoder(pCodecParameters->codec_id);
+    if (pCodec == NULL) {
+        LOGE("codec find audio decoder error");
+        callPlayerJniError(threadMode, CODEC_FIND_DECODER_ERROR_CODE,
+                           "codec find audio decoder error");
+        return;
+    }
+    // 打开解码器
+    pCodecContext = avcodec_alloc_context3(pCodec);
+    if (pCodecContext == NULL) {
+        LOGE("codec alloc context error");
+        callPlayerJniError(threadMode, CODEC_ALLOC_CONTEXT_ERROR_CODE, "codec alloc context error");
+        return;
+    }
+    int codecParametersToContextRes = avcodec_parameters_to_context(pCodecContext,
+                                                                    pCodecParameters);
+    if (codecParametersToContextRes < 0) {
+        LOGE("codec parameters to context error: %s", av_err2str(codecParametersToContextRes));
+        callPlayerJniError(threadMode, codecParametersToContextRes,
+                           av_err2str(codecParametersToContextRes));
+        return;
+    }
+
+    int codecOpenRes = avcodec_open2(pCodecContext, pCodec, NULL);
+    if (codecOpenRes != 0) {
+        LOGE("codec audio open error: %s", av_err2str(codecOpenRes));
+        callPlayerJniError(threadMode, codecOpenRes, av_err2str(codecOpenRes));
+        return;
+    }
+
+    // ---------- 重采样 start ----------
+    int64_t out_ch_layout = AV_CH_LAYOUT_STEREO;
+    enum AVSampleFormat out_sample_fmt = AVSampleFormat::AV_SAMPLE_FMT_S16;
+    int out_sample_rate = AUDIO_SAMPLE_RATE;
+    int64_t in_ch_layout = pCodecContext->channel_layout;
+    enum AVSampleFormat in_sample_fmt = pCodecContext->sample_fmt;
+    int in_sample_rate = pCodecContext->sample_rate;
+    swrContext = swr_alloc_set_opts(NULL, out_ch_layout, out_sample_fmt,
+                                     out_sample_rate, in_ch_layout, in_sample_fmt, in_sample_rate, 0, NULL);
+    if (swrContext == NULL) {
+        // 提示错误
+        callPlayerJniError(threadMode, SWR_ALLOC_SET_OPTS_ERROR_CODE, "swr alloc set opts error");
+        return;
+    }
+    int swrInitRes = swr_init(swrContext);
+    if (swrInitRes < 0) {
+        callPlayerJniError(threadMode, SWR_CONTEXT_INIT_ERROR_CODE, "swr context swr init error");
+        return;
+    }
+
+    resampleOutBuffer = (uint8_t *) malloc(pCodecContext->frame_size * 2 * 2);
+    // ---------- 重采样 end ----------
+}
+
+void FFmpegAudio::release() {
+    if (pPacketQueue) {
+        delete (pPacketQueue);
+        pPacketQueue = NULL;
+    }
+
+    if (resampleOutBuffer) {
+        free(resampleOutBuffer);
+        resampleOutBuffer = NULL;
+    }
+
+    if (pPlayerStatus) {
+        delete (pPlayerStatus);
+        pPlayerStatus = NULL;
+    }
+
+    if (pCodecContext != NULL) {
+        avcodec_close(pCodecContext);
+        avcodec_free_context(&pCodecContext);
+        pCodecContext = NULL;
+    }
+
+    if (swrContext != NULL) {
+        swr_free(&swrContext);
+        free(swrContext);
+        swrContext = NULL;
+    }
 }
 
 //void FFmpegAudio::PlayAudioTack(){

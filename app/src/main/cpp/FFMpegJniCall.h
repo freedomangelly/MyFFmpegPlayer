@@ -15,7 +15,8 @@ class FFMpegJniCall {
 public :
     JavaVM *javaVM;
     JNIEnv *jniEnv;
-    jmethodID  iPlayerErrorMid;
+    jmethodID  jPlayerErrorMid;
+    jmethodID  jPlayPrepareMid;
     jobject  jPlayerObj;
 public:
     FFMpegJniCall(JavaVM *javaVm ,JNIEnv *jniEnv,jobject jPlayerObj);
@@ -28,6 +29,8 @@ public :
 
 
     void callPlayerError(ThreadMode threadMode,int code, char *msg);
+
+    void callPlayerPrepared(ThreadMode mode);
 };
 
 

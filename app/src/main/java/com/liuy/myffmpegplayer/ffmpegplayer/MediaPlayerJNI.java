@@ -1,6 +1,7 @@
 package com.liuy.myffmpegplayer.ffmpegplayer;
 
 import android.text.TextUtils;
+import android.util.Log;
 
 import com.liuy.myffmpegplayer.ffmpegplayer.listener.MediaErrorListener;
 import com.liuy.myffmpegplayer.ffmpegplayer.listener.MediaPreparedListener;
@@ -38,6 +39,7 @@ public class MediaPlayerJNI {
 
     // called from jni
     private void onError(int code, String msg) {
+        Log.i("MY_FFMPEG_TAG","onError");
         if (mErrorListener != null) {
             mErrorListener.onError(code, msg);
         }
@@ -45,6 +47,7 @@ public class MediaPlayerJNI {
 
     // called from jni
     private void onPrepared() {
+        Log.i("MY_FFMPEG_TAG","onPrepared");
         if (mPreparedListener != null) {
             mPreparedListener.onPrepared();
         }

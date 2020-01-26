@@ -17,6 +17,10 @@ extern "C"{
 #include <SLES/OpenSLES.h>
 #include <SLES/OpenSLES_Android.h>
 
+#include "FFmpegPlayerStatus.h"
+#include "FFmpegPlayerStatus.h"
+#include "FFmpegPacketQueue.h"
+
 class FFmpegAudio {
 public:
     jobject jAudioTrackOjb;
@@ -27,6 +31,9 @@ public:
     uint8_t  *resampleOutBuffer=NULL;
     FFMpegJniCall *pJniCall=NULL;
     int audioStreamIndex=-1;
+
+    FFmpegPlayerStatus *pPlayerStatus=NULL;
+    FFmpegPacketQueue *pPacketQueue=NULL;
 
 public:
     FFmpegAudio(int audioStreamIndex, FFMpegJniCall *pJniCall, AVCodecContext *pCodecContext,
@@ -39,6 +46,10 @@ public:
     void initCreateAudioTrack(JNIEnv *env);
     void callAudioTrackWrite(JNIEnv *env,jbyteArray audioData,int offsetInBytes,int sizeInBytes);
     int resampleAudio();
+
+    void analysisStream(ThreadMode threadMode,AVStream **streams);
+    void callPlayerJniError(ThreadMode threadMode,int code,char *msg);
+    void release();
 private:
 //    void FFmpegAudio::PlayAudioTack();
 
