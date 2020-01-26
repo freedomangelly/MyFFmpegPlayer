@@ -13,8 +13,6 @@ enum ThreadMode{
 
 class FFMpegJniCall {
 public :
-    jobject jAudioTrackOjb;
-    jmethodID  jAudioTrackWriteMid;
     JavaVM *javaVM;
     JNIEnv *jniEnv;
     jmethodID  iPlayerErrorMid;
@@ -24,10 +22,10 @@ public:
     ~FFMpegJniCall();
 
 private:
-    void initCreateAudioTrack();
+
 
 public :
-    void callAudioTrackWrite(jbyteArray audioData,int offsetInBytes,int sizeInBytes);
+
 
     void callPlayerError(ThreadMode threadMode,int code, char *msg);
 };

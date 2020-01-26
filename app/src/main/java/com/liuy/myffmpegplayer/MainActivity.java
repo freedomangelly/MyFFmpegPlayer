@@ -32,7 +32,7 @@ public class MainActivity extends AppCompatActivity {
         Log.e("TAG", "file is exist: " + mMusicFile.exists());
 
         mPlayer = new MediaPlayerJNI();
-//        mPlayer.setDataSource(mMusicFile.getAbsolutePath());
+        mPlayer.setDataSource(mMusicFile.getAbsolutePath());
 //
         mPlayer.setOnErrorListener(new MediaErrorListener() {
             @Override
@@ -43,21 +43,17 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 //
-//        mPlayer.setOnPreparedListener(new MediaPreparedListener() {
-//            @Override
-//            public void onPrepared() {
-//                Log.e("TAG", "准备完毕");
-//                mPlayer.play();
-//            }
-//        });
-//        mPlayer.prepareAsync();
-        new Thread(){
+        mPlayer.setOnPreparedListener(new MediaPreparedListener() {
             @Override
-            public void run() {
-                super.run();
-                mPlayer.play2(mMusicFile.getAbsolutePath());
+            public void onPrepared() {
+                Log.e("TAG", "准备完毕");
+                mPlayer.play();
             }
-        }.start();
+        });
+
+        mPlayer.prepare();
+        mPlayer.play();
+        mPlayer.prepareAsync();
 
     }
 }

@@ -8,7 +8,7 @@
 MyFFmpeg::MyFFmpeg(FFMpegJniCall *jniCall, const char *url) {
     this->jniCall=jniCall;
 //    this->url=url;
-    this->url= static_cast<const char *>(malloc(strlen(url) + 1));
+    this->url= static_cast<char *>(malloc(strlen(url) + 1));
     LOGI("enter MyFFmpeg Play2 %s",url);
     memcpy((void *) this->url, url, strlen(url) + 1);
 }
@@ -17,19 +17,27 @@ MyFFmpeg::~MyFFmpeg() {
     release();
 }
 
-void *threadPlay(void *context){
-    MyFFmpeg *pFFmpeg= (MyFFmpeg *)(context);
-    pFFmpeg->prepare(THREAD_CHILD);
-    return 0;
-}
+//void *threadPlay(void *context){
+//    MyFFmpeg *pFFmpeg= (MyFFmpeg *)(context);
+//    pFFmpeg->prepare(THREAD_CHILD);
+//    return 0;
+//}
 
 void MyFFmpeg::play() {
-//    LOGI("enter play %s",url);
-    pthread_t playThreadT;
-    pthread_create(&playThreadT,NULL,threadPlay,this);
-    pthread_detach(playThreadT);
+    //主线程
 //    MyFFmpeg *pFFmpeg= (MyFFmpeg *)(this);
 //    pFFmpeg->prepare();
+
+//子线程
+//    pthread_t playThreadT;
+//    pthread_create(&playThreadT,NULL,threadPlay,this);
+//    pthread_detach(playThreadT);
+    LOGI("nPlay 2");
+    if(pAudio!=NULL){
+        LOGI("nPlay 3");
+        pAudio->play();
+    }
+
 }
 
 void MyFFmpeg::prepare(ThreadMode threadMode) {
@@ -132,99 +140,20 @@ void MyFFmpeg::prepare(ThreadMode threadMode) {
         callPlayerJniError(threadMode,SWR_CONTEXT_INIT_ERROR_CODE, "swr context swr init error");
         return;
     }
-    LOGI("1111111111111111111111120");
-    // size 是播放指定的大小，是最终输出的大小
-    int outChannels = av_get_channel_layout_nb_channels(out_ch_layout);
-    LOGI("11111111111111111111111201");
-    int dataSize = av_samples_get_buffer_size(NULL, outChannels, pCodecParameters->frame_size,
-                                              out_sample_fmt, 0);
-    LOGI("11111111111111111111111202");
-    uint8_t *resampleOutBuffer = (uint8_t *) malloc(dataSize);
-    // ---------- 重采样 end ----------
-    LOGI("11111111111111111111111203");//jniEnv主线程 现在是子线程
+    LOGI("1111111111111111111111111 10");
+    pAudio=new FFmpegAudio(audioStramIndex,jniCall,pCodecContext,pFormatContext);
 
-    JNIEnv* env;
-    int status;
-    bool isAttach = false;
-    JavaVM *javaVms=NULL;
-            LOGI("111111111111111111111112031");
-    if(threadMode==THREAD_CHILD){
-        LOGI("1111111111111111111111120312");
-        javaVms=jniCall->javaVM;
-        LOGI("1111111111111111111111120313");
-        status = javaVms->AttachCurrentThread(&env, 0);
-        LOGI("111111111111111111111112032 %d",status);
-        if (status < 0) {
-                LOGE("MediaRenderer::DoJavaCallback Failed: %d", status);
-                return ;
-            }
-            isAttach = true;
-        javaVms->DetachCurrentThread();
-    }
-    LOGI("11111111111111111111111204 %d",isAttach);
-    jbyteArray jPcmByteArray = NULL;
-    if(isAttach){
-        jPcmByteArray = jniCall->jniEnv->NewByteArray(dataSize);
-    } else{
-        jPcmByteArray = env->NewByteArray(dataSize);
-    }
-    // native 创建 c 数组
-    LOGI("11111111111111111111111204");
-    jbyte *jPcmData = jniCall->jniEnv->GetByteArrayElements(jPcmByteArray, NULL);
-    LOGI("11111111111111111111111205");
-    pPacket = av_packet_alloc();
-    pFrame = av_frame_alloc();
-    LOGI("11111111111111111111111121");
-    while (av_read_frame(pFormatContext, pPacket) >= 0) {
-        LOGI("111111111111111111111111211");
-        if (pPacket->stream_index == audioStramIndex) {
-            LOGI("111111111111111111111111212");
-            // Packet 包，压缩的数据，解码成 pcm 数据
-            int codecSendPacketRes = avcodec_send_packet(pCodecContext, pPacket);
-            if (codecSendPacketRes == 0) {
-                LOGI("111111111111111111111111213");
-                int codecReceiveFrameRes = avcodec_receive_frame(pCodecContext, pFrame);
-                if (codecReceiveFrameRes == 0) {
-                    LOGI("111111111111111111111111214");
-                    // AVPacket -> AVFrame
-                    index++;
-                    LOGE("解码第 %d 帧", index);
-
-                    // 调用重采样的方法
-                    swr_convert(swrContext, &resampleOutBuffer, pFrame->nb_samples,
-                                (const uint8_t **) pFrame->data, pFrame->nb_samples);
-                    LOGI("111111111111111111111111215");
-                    // write 写到缓冲区 pFrame.data -> javabyte
-                    // size 是多大，装 pcm 的数据
-                    // 1s 44100 点  2通道 ，2字节    44100*2*2
-                    // 1帧不是一秒，pFrame->nb_samples点
-                    memcpy(jPcmData, resampleOutBuffer, dataSize);
-                    LOGI("111111111111111111111111216");
-                    // 0 把 c 的数组的数据同步到 jbyteArray , 然后释放native数组
-                    jniCall->jniEnv->ReleaseByteArrayElements(jPcmByteArray, jPcmData, JNI_COMMIT);
-                    LOGI("111111111111111111111111217");
-                    // TODO
-                    jniCall->callAudioTrackWrite(jPcmByteArray, 0, dataSize);
-                    LOGI("111111111111111111111111218");
-                }
-            }
-        }
-        // 解引用
-        av_packet_unref(pPacket);
-        av_frame_unref(pFrame);
-    }
-    LOGI("1111111111111111111111122");
-
-    // 1. 解引用数据 data ， 2. 销毁 pPacket 结构体内存  3. pPacket = NULL
-    av_packet_free(&pPacket);
-    av_frame_free(&pFrame);
-    // 解除 jPcmDataArray 的持有，让 javaGC 回收
-    jniCall->jniEnv->ReleaseByteArrayElements(jPcmByteArray, jPcmData, 0);
-    jniCall->jniEnv->DeleteLocalRef(jPcmByteArray);
 }
-
+void *threadPrepare(void *context) {
+    MyFFmpeg *pFFmpeg = (MyFFmpeg *) context;
+    pFFmpeg->prepare(THREAD_CHILD);
+    return 0;
+}
 void MyFFmpeg::prepareAsync() {
-
+    pthread_t prepareThreadT;
+    pthread_create(&prepareThreadT, NULL, threadPrepare, this);
+    pthread_detach(prepareThreadT);
+//    this->prepare(THREAD_MAIN);
 }
 
 void MyFFmpeg::callPlayerJniError(ThreadMode threadMode,int code, char *msg) {
@@ -248,7 +177,7 @@ void MyFFmpeg::release() {
     if(swrContext!=NULL){
         swr_free(&swrContext);
         free(swrContext);
-        resampleOutBuffer=NULL;
+        swrContext=NULL;
     }
     if(resampleOutBuffer!=NULL){
         free(resampleOutBuffer);
@@ -260,6 +189,10 @@ void MyFFmpeg::release() {
         url=NULL;
     }
 
+}
+
+void MyFFmpeg::prepare() {
+    prepare(THREAD_MAIN);
 }
 
 
